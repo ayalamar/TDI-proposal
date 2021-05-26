@@ -1,0 +1,100 @@
+---
+title: 'TDI Section 1: Project proposal'
+author: "Maria Ayala"
+date: "26/05/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyr)
+library(tidyverse)
+library(usmap)
+library(dplyr)
+library(randomForest)
+```
+
+For the TDI project, I'd like to propose an analysis of student educational outcomes. In recent sociological studies of economic stratification and intergenerational mobility, it has now been shown that the best predictor of success in life is education. Looking very briefly at how states allocate and spend on education (https://www.urban.org/), we see a large disparity between key regions. And not only does this have immediate repercussions, but this affects key metrics that measure quality of life over time, such as upward mobility.
+
+```{r spending, echo=FALSE, fig.height = 3}
+
+spending <- read_excel("State-by-State Spending on Kids.xlsx", sheet = 1)
+statepops <- read.csv("acs2017_census_tract_data.csv", header = TRUE)
+
+statepops <- statepops %>%
+  group_by(State) %>%
+  summarise(popn = sum(TotalPop, na.rm = TRUE)) %>%
+  filter(State != "Puerto Rico")
+
+orange <- "#C9592E"
+
+spending$fips <- fips(spending$state) # get geo IDs
+
+spending <- left_join(spending,statepops, by = c("state" = "State"))
+spending$spending2016_percapita <- spending$`2016`/spending$popn # normalize
+
+plot_usmap(data = spending, values = "spending2016_percapita",  color = orange, labels=FALSE) + 
+  scale_fill_continuous( low = "white", high = orange, 
+                         name = "Spending", label = scales::comma
+  ) + 
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black")) + 
+  labs(title = "State spending on education per capita", caption = "Source: @ayalamars")
+```
+Given these disparities, it's vital that efforts are allocated appropriately. Developing a live and publicly accessible web-app that visualizes these key disparities and predicts student outcome will be immediately beneficial to efforts in deploying additional services, as well as increase efforts in those affected regions. 
+
+Using the publicly available Civil Rights Data Collection Datasets (https://www2.ed.gov/about/offices/list/ocr/data.html) we can for instance examine disparities in retention between demographic characteristics, such as race:
+```{r retention, echo=FALSE, fig.height = 3}
+
+retention <- read_excel("Retention-in-Grade-12.xlsx", sheet = 2)
+
+ret_states <- retention[-1,] # remove totals for easy plotting
+
+ret_states$fips <- fips(ret_states$state)# geo tags
+
+ret_states <- left_join(ret_states,statepops, by = c("state" = "State"))
+ret_states$HispRetpercapita <- as.numeric(ret_states$hispanic_num)/ret_states$popn # normalize
+
+blue <- "#0000CD"
+
+plot_usmap(data = ret_states, values = "hispanic_per",  color = blue, labels=FALSE) + 
+  scale_fill_continuous( low = "white", high = blue, 
+                         name = "Retention", label = scales::comma
+  ) + 
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black")) + 
+  labs(title = "Hispanic or Latino Student retention", caption = "Source: @ayalamars")
+
+```
+Running a quick random forest model, it's clear that school expenditures on school administrative and support services are key contributors to whether a student will be retained at grade 12 (and thus, not graduate).
+```{r predictions, echo=FALSE, fig.height= 4}
+load("model3.RData")
+varImpPlot(model3, n.var = 5)
+```
+This is data coming from 2017-18, and was just released by the US department of education. Thus, given this lag time of approximately 3-4 years, it's important to forecast student outcomes in order to provide real-time solutions.
+```{r outcomes, echo=FALSE}
+dftrunc <- read.csv("dftrunc.csv", header = TRUE)
+dftrunc.sum <- dftrunc %>%
+  group_by(LEA_STATE_NAME) %>%
+  summarise(state_mean = mean(TOT_RET_G12_M, na.rm = T))
+
+statepops$fips <- fips(statepops$State)
+dftrunc.sum$fips <- fips(dftrunc.sum$LEA_STATE_NAME)
+
+dftrunc.sum <- inner_join(dftrunc.sum, statepops, by="fips")
+dftrunc.sum$state_mean_n <- dftrunc.sum$state_mean/dftrunc.sum$popn
+
+plot_usmap(data = dftrunc.sum, values = "state_mean_n",  color = orange, labels=FALSE) + 
+  scale_fill_continuous( low = "white", high = orange, 
+                         name = "Retention per capita", label = scales::comma
+  ) + 
+  theme(legend.position = "right") + 
+  theme(panel.background = element_rect(colour = "black")) + 
+  labs(title = "Grade 12 Retention for Males", caption = "Source: @ayalamars")
+
+```
+Together, these findings will help improve student outcomes by improving access to data so that the right services can be targeted to those who need it, and ultimately improve graduation rates.
+
